@@ -92,6 +92,18 @@
         }
         button:hover { background: #00f0ff; color: #000; box-shadow: 0 0 15px #00f0ff; }
 
+        /* New button style for search */
+        #search-button {
+            background: rgba(255, 165, 0, 0.2); /* Orange/Amber tone for search */
+            border-color: #ffa500;
+            color: #ffa500;
+        }
+        #search-button:hover {
+            background: #ffa500;
+            color: #000;
+            box-shadow: 0 0 15px #ffa500;
+        }
+
         .presets { display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap; }
         .preset-btn {
             flex: 1 1 40%; /* Responsive flex */
@@ -337,9 +349,19 @@
     <div id="ui-container">
         <h1>全球定位系统 <span style="font-size:0.6em; opacity:0.7">Mobile</span></h1>
         
+        <!-- NEW: Place Name Search Input -->
+        <div class="input-group">
+            <label>PLACE NAME / 地点名称</label>
+            <input type="text" id="place-name" placeholder="例如: 北京天安门广场">
+        </div>
+        
+        <button id="search-button" onclick="searchAndLocate()">搜索地点并定位</button>
+        
+        <div style="border-top: 1px solid rgba(0, 240, 255, 0.1); margin: 15px 0;"></div>
+
         <div class="input-group">
             <label>LATITUDE / 纬度</label>
-            <!-- 关键修复：改为 type="text" 以允许粘贴包含逗号和两个小数点的完整坐标串 -->
+            <!-- 纬度框改为 type="text" 以允许粘贴包含逗号和两个小数点的完整坐标串 -->
             <input type="text" id="lat" placeholder="39.904200, 116.407400 (可粘贴完整的坐标对到此框)">
         </div>
         
@@ -352,7 +374,7 @@
         <!-- New Clipboard Button -->
         <button class="utility-btn" onclick="pasteFromClipboard()">解析输入框中的坐标</button>
 
-        <button onclick="locateUserCoordinates()">开始定位</button>
+        <button onclick="locateUserCoordinates()">手动坐标定位</button>
 
         <div class="presets">
             <!-- Fixed: calling setPreset() directly -->
@@ -396,6 +418,11 @@
             // This function now calls the internal parser, expecting the user to have manually 
             // pasted coordinates into the Latitude input field using Ctrl+V/Cmd+V.
             window.moduleFunctions.parseCoordinatesFromInputInternal();
+        }
+        
+        // NEW: Global function for search
+        function searchAndLocate() {
+            window.moduleFunctions.searchAndLocateInternal();
         }
 
         function locateUserCoordinates() {
@@ -455,6 +482,8 @@
         let scene, camera, renderer, controls;
         let earthMesh, cloudsMesh, targetMarker, atmosphereMesh;
         const EARTH_RADIUS = 100; 
+        const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=";
+        const apiKey = ""; // Canvas will provide this if empty
 
         let db, auth, userId;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -494,6 +523,15 @@
                 console.error("Firebase setup failed:", error);
                 window.showStatus("ERROR: DATA SYSTEM FAILED");
                 document.getElementById('history-list').innerHTML = '<li style="color:#f00; text-align:center;">无法连接到数据库</li>';
+            } finally {
+                // 修复卡在加载界面的问题：无论初始化成功与否，都确保移除加载动画
+                setTimeout(() => {
+                    const loader = document.getElementById('loader');
+                    if (loader) {
+                        loader.style.opacity = '0';
+                        setTimeout(() => loader.remove(), 500);
+                    }
+                }, 1200);
             }
         }
 
@@ -537,12 +575,8 @@
             createMarker();
 
             window.addEventListener('resize', onWindowResize, false);
-
-            setTimeout(() => {
-                const loader = document.getElementById('loader');
-                loader.style.opacity = '0';
-                setTimeout(() => loader.remove(), 500);
-            }, 1200);
+            
+            // 移除原本在此处的加载动画移除逻辑，已移至 firebaseSetup() 的 finally 块中确保执行。
             
             animate();
         }
@@ -670,7 +704,7 @@
             });
         }
 
-        async function saveHistory(lat, lon) {
+        async function saveHistory(lat, lon, placeName = null) {
             const colRef = getHistoryCollectionRef();
             if (!colRef) return;
             
@@ -678,7 +712,8 @@
                 await addDoc(colRef, {
                     lat: lat,
                     lon: lon,
-                    timestamp: Date.now() 
+                    timestamp: Date.now(),
+                    place: placeName // Save place name if available
                 });
             } catch (error) {
                 console.error("Error saving history:", error);
@@ -740,11 +775,13 @@
                 li.className = 'history-item';
                 
                 const timeString = new Date(item.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                // Display place name or coordinates if no name is available
+                const display = item.place ? item.place : `Lat: ${item.lat.toFixed(4)}, Lon: ${item.lon.toFixed(4)}`;
 
                 // Clicking the text loads the coordinates
                 li.innerHTML = `
                     <span class="coords-text" data-lat="${item.lat}" data-lon="${item.lon}">
-                        [${timeString}] Lat: ${item.lat.toFixed(4)}, Lon: ${item.lon.toFixed(4)}
+                        [${timeString}] ${display}
                     </span>
                     <button class="delete-btn" data-id="${item.id}" title="删除此记录">X</button>
                 `;
@@ -765,6 +802,98 @@
 
                 listEl.appendChild(li);
             });
+        }
+
+        // --- NEW: Place Search Functionality (Internal/Module Scope) ---
+
+        async function searchAndLocateInternal() {
+            const placeName = document.getElementById('place-name').value.trim();
+            if (placeName === '') {
+                window.showStatus("ERROR: 请输入地点名称");
+                return;
+            }
+
+            window.showStatus(`SEARCHING FOR: ${placeName}...`);
+
+            const userQuery = `Find the latitude and longitude for the location: ${placeName}.`;
+            const systemPrompt = "You are a geopolitical coordinate extractor. When provided with a location query, use the provided Google Search tool to find its precise latitude and longitude. Respond only with a JSON object containing the `lat` (latitude, as a number between -90 and 90) and `lon` (longitude, as a number between -180 and 180) of the primary location found. Do not include any other text, explanations, or citations in your response.";
+            
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "lat": { "type": "NUMBER" },
+                            "lon": { "type": "NUMBER" }
+                        },
+                        required: ["lat", "lon"]
+                    }
+                }
+            };
+            
+            try {
+                // Exponential backoff retry logic
+                let response, result;
+                for (let i = 0; i < 3; i++) {
+                    response = await fetch(API_URL + apiKey, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        result = await response.json();
+                        break;
+                    } else {
+                        console.warn(`Attempt ${i + 1} failed, retrying in ${2 ** i}s...`);
+                        await new Promise(resolve => setTimeout(resolve, (2 ** i) * 1000));
+                    }
+                }
+                
+                // Enhanced API Response Handling
+                const candidate = result?.candidates?.[0];
+                const part = candidate?.content?.parts?.[0];
+                const jsonText = part?.text;
+
+                if (!jsonText) {
+                    const finishReason = candidate?.finishReason;
+                    if (finishReason) {
+                        console.error("Gemini API Blocked or Stopped:", finishReason);
+                        window.showStatus(`ERROR: 搜索被阻止或停止 (${finishReason})`);
+                        return; // Exit function gracefully
+                    }
+                    // If no text and no obvious block reason, treat as malformed
+                    throw new Error("API response text content is missing or structure is malformed.");
+                }
+                
+                const parsedJson = JSON.parse(jsonText);
+                // End Enhanced API Response Handling
+
+                const lat = parsedJson.lat;
+                const lon = parsedJson.lon;
+
+                if (typeof lat !== 'number' || typeof lon !== 'number' || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                    window.showStatus("ERROR: 无法解析有效的经纬度信息");
+                    return;
+                }
+                
+                // Set the coordinate inputs for user visibility and then locate
+                document.getElementById('lat').value = lat;
+                document.getElementById('lon').value = lon;
+                
+                // Fly to the location and save history with the place name
+                window.showStatus(`COORDINATES FOUND. LOCATING ${placeName}...`);
+                flyTo(lat, lon, placeName);
+                
+            } catch (error) {
+                console.error("Search API failed:", error);
+                // Show a more generic error if it's a parsing/network issue not caught above
+                window.showStatus("ERROR: 搜索失败，请检查地点名称和网络连接");
+            }
         }
 
         // --- Input Parsing Functionality (Internal/Module Scope) ---
@@ -813,6 +942,8 @@
         function setPresetInternal(lat, lon) {
             document.getElementById('lat').value = lat;
             document.getElementById('lon').value = lon;
+            // Clear place name input when setting coordinates manually
+            document.getElementById('place-name').value = ''; 
             locateUserCoordinatesInternal();
         }
 
@@ -869,12 +1000,14 @@
             }
             
             // NEW: Save coordinates to history before flight starts
-            saveHistory(lat, lon);
+            // Clear place name input when using manual coordinates
+            const placeName = document.getElementById('place-name').value.trim() || null;
+            saveHistory(lat, lon, placeName);
 
-            flyTo(lat, lon);
+            flyTo(lat, lon, placeName);
         }
 
-        function flyTo(lat, lon) {
+        function flyTo(lat, lon, placeName = null) {
             const targetSurfacePos = calcPosFromLatLonRad(lat, lon, EARTH_RADIUS);
             
             targetMarker.position.copy(targetSurfacePos);
@@ -897,7 +1030,8 @@
                         window.showStatus("OPTICAL FEED ESTABLISHED.");
                         setTimeout(() => {
                             showStreetView(lat, lon);
-                            window.showStatus(`LOCATION LOCKED: ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+                            const displayLocation = placeName ? placeName : `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                            window.showStatus(`LOCATION LOCKED: ${displayLocation}`);
                             document.getElementById('reticle').style.display = 'none'; // Hide reticle after landing
                         }, 500);
                     })
@@ -933,8 +1067,8 @@
         // --- Expose Module Functions to Global Handler ---
         window.moduleFunctions.toggleUIInternal = toggleUIInternal;
         window.moduleFunctions.hideStreetViewInternal = hideStreetViewInternal;
-        // The global `pasteFromClipboard` now points to the new parsing logic
         window.moduleFunctions.parseCoordinatesFromInputInternal = parseCoordinatesFromInputInternal; 
+        window.moduleFunctions.searchAndLocateInternal = searchAndLocateInternal; // Expose new search function
         window.moduleFunctions.locateUserCoordinatesInternal = locateUserCoordinatesInternal;
         window.moduleFunctions.setPresetInternal = setPresetInternal;
         window.moduleFunctions.clearAllHistoryInternal = clearAllHistoryInternal;
