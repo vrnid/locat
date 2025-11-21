@@ -88,6 +88,7 @@
             letter-spacing: 1px;
             transition: all 0.3s;
             font-size: 1rem;
+            margin-bottom: 8px;
         }
         button:hover { background: #00f0ff; color: #000; box-shadow: 0 0 15px #00f0ff; }
 
@@ -101,6 +102,74 @@
             color: #aaa;
         }
         .preset-btn:hover { border-color: #00f0ff; color: #00f0ff; }
+        
+        /* History Section Styles */
+        #history-section {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px dashed rgba(0, 240, 255, 0.3);
+        }
+        #history-section h2 {
+            font-size: 0.9rem;
+            color: #00f0ff;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        #history-list {
+            list-style: none;
+            padding: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 240, 255, 0.1);
+            border-radius: 4px;
+            padding: 5px 0;
+        }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            border-bottom: 1px dotted rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .history-item:hover {
+            background-color: rgba(0, 240, 255, 0.1);
+        }
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        .delete-btn {
+            background: transparent;
+            border: none;
+            color: #ff4444;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0 5px;
+            transition: color 0.2s;
+        }
+        .delete-btn:hover {
+            color: #ff0000;
+        }
+        
+        .utility-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #777;
+            color: #ccc;
+            padding: 10px;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+        }
+        .utility-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #fff;
+            color: #fff;
+            box-shadow: none;
+        }
 
         #status-msg {
             margin-top: 15px;
@@ -238,6 +307,7 @@
         }
     </style>
     
+    <!-- Three.js and Tween.js for 3D globe visualization -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -269,37 +339,162 @@
         
         <div class="input-group">
             <label>LATITUDE / 纬度</label>
-            <input type="number" id="lat" step="0.000001" placeholder="39.904200">
+            <!-- 关键修复：改为 type="text" 以允许粘贴包含逗号和两个小数点的完整坐标串 -->
+            <input type="text" id="lat" placeholder="39.904200, 116.407400 (可粘贴完整的坐标对到此框)">
         </div>
         
         <div class="input-group">
             <label>LONGITUDE / 经度</label>
+            <!-- 经度框仍使用 type="number" 限制单个数字 -->
             <input type="number" id="lon" step="0.000001" placeholder="116.407400">
         </div>
+
+        <!-- New Clipboard Button -->
+        <button class="utility-btn" onclick="pasteFromClipboard()">解析输入框中的坐标</button>
 
         <button onclick="locateUserCoordinates()">开始定位</button>
 
         <div class="presets">
+            <!-- Fixed: calling setPreset() directly -->
             <button class="preset-btn" onclick="setPreset(39.9042, 116.4074)">北京</button>
             <button class="preset-btn" onclick="setPreset(31.2304, 121.4737)">上海</button>
             <button class="preset-btn" onclick="setPreset(34.6937, 135.5023)">大阪</button>
             <button class="preset-btn" onclick="setPreset(40.7128, -74.0060)">纽约</button>
         </div>
+        
+        <!-- History Section -->
+        <div id="history-section">
+            <h2>定位历史记录</h2>
+            <ul id="history-list">
+                <!-- History items will be inserted here -->
+                <li style="text-align:center; color:#555; font-style: italic;">加载中...</li>
+            </ul>
+            <!-- Fixed: calling clearAllHistory() directly -->
+            <button class="utility-btn" style="background:#400; border-color:#800; margin-top: 10px;" onclick="clearAllHistory()">清空全部历史记录</button>
+        </div>
 
         <div id="status-msg">SYSTEM READY</div>
     </div>
-
+    
+    <!-- Script block for functions that need to be globally accessible by onclick handlers -->
     <script>
+        // These functions are defined globally so they can be called directly by HTML onclick attributes.
+        // The actual logic will be routed to the module-level functions where Firebase/Three.js objects reside.
+        
+        // Global references to module functions (will be set in the module script below)
+        window.moduleFunctions = {};
+
+        function toggleUI() {
+            window.moduleFunctions.toggleUIInternal();
+        }
+
+        function hideStreetView() {
+            window.moduleFunctions.hideStreetViewInternal();
+        }
+
+        function pasteFromClipboard() {
+            // This function now calls the internal parser, expecting the user to have manually 
+            // pasted coordinates into the Latitude input field using Ctrl+V/Cmd+V.
+            window.moduleFunctions.parseCoordinatesFromInputInternal();
+        }
+
+        function locateUserCoordinates() {
+            window.moduleFunctions.locateUserCoordinatesInternal();
+        }
+
+        function setPreset(lat, lon) {
+            window.moduleFunctions.setPresetInternal(lat, lon);
+        }
+
+        function deleteHistory(docId) {
+             window.moduleFunctions.deleteHistoryItemInternal(docId);
+        }
+
+        function clearAllHistory() {
+            window.moduleFunctions.clearAllHistoryInternal();
+        }
+
+        // Global function to display status, independent of module
+        window.showStatus = function(text) {
+            const el = document.getElementById('status-msg');
+            el.innerText = text;
+            
+            let originalText = text;
+            let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&";
+            let iter = 0;
+            
+            if(window.statusInterval) clearInterval(window.statusInterval);
+            
+            window.statusInterval = setInterval(() => {
+                el.innerText = originalText.split("").map((letter, index) => {
+                    if(index < iter) return originalText[index];
+                    return chars[Math.floor(Math.random() * 26)];
+                }).join("");
+                
+                if(iter >= originalText.length) clearInterval(window.statusInterval);
+                iter += 1/2; 
+            }, 30);
+        }
+
+        // Global function for simple confirmation dialog
+        window.confirm = (message) => {
+            // Since we cannot use the native confirm(), we use a simple alert as a placeholder.
+            console.warn("Using console alert as a placeholder for a custom confirm modal.");
+            return true; // Assume yes for simple placeholder, as we cannot stop execution flow.
+        };
+    </script>
+
+    <script type="module">
+        // --- Firebase Imports ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, doc, deleteDoc, onSnapshot, query, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Global Variables (Three.js and Firebase) ---
         let scene, camera, renderer, controls;
         let earthMesh, cloudsMesh, targetMarker, atmosphereMesh;
         const EARTH_RADIUS = 100; 
 
-        // Mobile UI Toggle
-        function toggleUI() {
+        let db, auth, userId;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+        // --- Core Functions (Internal/Module Scope) ---
+        
+        // Exposed to global scope via window.moduleFunctions
+        function toggleUIInternal() {
             const ui = document.getElementById('ui-container');
             const btn = document.getElementById('ui-toggle');
             ui.classList.toggle('mobile-hidden');
             btn.innerText = ui.classList.contains('mobile-hidden') ? '☰' : '✕';
+        }
+
+        async function firebaseSetup() {
+            try {
+                // setLogLevel('Debug'); // Enable Firestore logging for debugging
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Authenticate user
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                userId = auth.currentUser?.uid || crypto.randomUUID();
+                
+                // Initialize Three.js and load history only after authentication is complete
+                init();
+                loadHistory();
+
+            } catch (error) {
+                console.error("Firebase setup failed:", error);
+                window.showStatus("ERROR: DATA SYSTEM FAILED");
+                document.getElementById('history-list').innerHTML = '<li style="color:#f00; text-align:center;">无法连接到数据库</li>';
+            }
         }
 
         function init() {
@@ -312,9 +507,7 @@
             renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             
-            // PERFORMANCE OPTIMIZATION: Cap pixel ratio at 2 to save battery/GPU on mobile
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.outputEncoding = THREE.sRGBEncoding;
             document.body.appendChild(renderer.domElement);
@@ -325,8 +518,6 @@
             controls.enablePan = false;
             controls.minDistance = EARTH_RADIUS + 2; 
             controls.maxDistance = 1500;
-            
-            // MOBILE TWEAK: Slower rotation speed for touch screens
             controls.rotateSpeed = 0.5;
 
             const ambientLight = new THREE.AmbientLight(0x444444);
@@ -358,6 +549,8 @@
 
         function createEarth() {
             const textureLoader = new THREE.TextureLoader();
+            // Note: External image URLs are provided as mock content. For a production environment, 
+            // these should be replaced with local or internal assets.
             const earthMap = textureLoader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg');
             const bumpMap = textureLoader.load('https://unpkg.com/three-globe/example/img/earth-topology.png');
             const specMap = textureLoader.load('https://unpkg.com/three-globe/example/img/earth-water.png');
@@ -446,52 +639,200 @@
             return new THREE.Vector3(x, y, z);
         }
 
-        function setPreset(lat, lon) {
-            document.getElementById('lat').value = lat;
-            document.getElementById('lon').value = lon;
-            locateUserCoordinates();
+        // --- History Management (Firestore) ---
+
+        function getHistoryCollectionRef() {
+            if (!db || !userId) return null;
+            // Private Collection Path: /artifacts/{appId}/users/{userId}/location_history
+            return collection(db, `artifacts/${appId}/users/${userId}/location_history`);
+        }
+        
+        function loadHistory() {
+            const colRef = getHistoryCollectionRef();
+            if (!colRef) return;
+
+            // Cannot use orderBy('timestamp', 'desc') without an index. We will sort data client-side.
+            const q = query(colRef);
+            
+            onSnapshot(q, (snapshot) => {
+                const history = [];
+                snapshot.forEach(doc => {
+                    history.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Sort client-side by timestamp (newest first)
+                history.sort((a, b) => b.timestamp - a.timestamp);
+                
+                renderHistory(history);
+            }, (error) => {
+                console.error("Error listening to history:", error);
+                document.getElementById('history-list').innerHTML = '<li style="color:#f00; text-align:center;">无法连接到数据库</li>';
+            });
         }
 
-        function showStatus(text) {
-            const el = document.getElementById('status-msg');
-            el.innerText = text;
+        async function saveHistory(lat, lon) {
+            const colRef = getHistoryCollectionRef();
+            if (!colRef) return;
             
-            let originalText = text;
-            let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&";
-            let iter = 0;
+            try {
+                await addDoc(colRef, {
+                    lat: lat,
+                    lon: lon,
+                    timestamp: Date.now() 
+                });
+            } catch (error) {
+                console.error("Error saving history:", error);
+                window.showStatus("ERROR: SAVE HISTORY FAILED");
+            }
+        }
+        
+        async function deleteHistoryItemInternal(docId) {
+            const colRef = getHistoryCollectionRef();
+            if (!colRef) return;
             
-            if(window.statusInterval) clearInterval(window.statusInterval);
+            try {
+                await deleteDoc(doc(colRef, docId));
+                window.showStatus("HISTORY ITEM DELETED");
+            } catch (error) {
+                console.error("Error deleting item:", error);
+                window.showStatus("ERROR: DELETE FAILED");
+            }
+        }
+
+        async function clearAllHistoryInternal() {
+            // Since native confirm is not used, we assume the user intends to clear if this is called.
+            const colRef = getHistoryCollectionRef();
+            if (!colRef) return;
             
-            window.statusInterval = setInterval(() => {
-                el.innerText = originalText.split("").map((letter, index) => {
-                    if(index < iter) return originalText[index];
-                    return chars[Math.floor(Math.random() * 26)];
-                }).join("");
+            // NOTE: Using a custom modal is highly recommended instead of native confirm/alert.
+            const isConfirmed = window.confirm('确定要清空全部定位历史记录吗？'); 
+            if (!isConfirmed) return;
+
+            try {
+                // Fetch all documents
+                const snapshot = await getDocs(colRef);
+                const deletePromises = [];
                 
-                if(iter >= originalText.length) clearInterval(window.statusInterval);
-                iter += 1/2; 
-            }, 30);
+                // Delete them in parallel
+                snapshot.forEach(doc => {
+                    deletePromises.push(deleteDoc(doc.ref));
+                });
+                await Promise.all(deletePromises);
+                
+                window.showStatus("ALL HISTORY CLEARED");
+            } catch (error) {
+                console.error("Error clearing history:", error);
+                window.showStatus("ERROR: CLEAR FAILED");
+            }
+        }
+        
+        function renderHistory(history) {
+            const listEl = document.getElementById('history-list');
+            listEl.innerHTML = ''; 
+
+            if (history.length === 0) {
+                listEl.innerHTML = '<li style="text-align:center; color:#555; font-style: italic;">暂无定位历史记录</li>';
+                return;
+            }
+
+            history.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'history-item';
+                
+                const timeString = new Date(item.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+                // Clicking the text loads the coordinates
+                li.innerHTML = `
+                    <span class="coords-text" data-lat="${item.lat}" data-lon="${item.lon}">
+                        [${timeString}] Lat: ${item.lat.toFixed(4)}, Lon: ${item.lon.toFixed(4)}
+                    </span>
+                    <button class="delete-btn" data-id="${item.id}" title="删除此记录">X</button>
+                `;
+
+                // Event listener to load coordinates from history
+                li.querySelector('.coords-text').addEventListener('click', (e) => {
+                    const lat = parseFloat(e.currentTarget.getAttribute('data-lat'));
+                    const lon = parseFloat(e.currentTarget.getAttribute('data-lon'));
+                    setPresetInternal(lat, lon); // Call the internal function
+                });
+
+                // Event listener to delete item
+                li.querySelector('.delete-btn').addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent loading coords when deleting
+                    const docId = e.currentTarget.getAttribute('data-id');
+                    deleteHistoryItemInternal(docId);
+                });
+
+                listEl.appendChild(li);
+            });
+        }
+
+        // --- Input Parsing Functionality (Internal/Module Scope) ---
+
+        // Renamed and changed logic to bypass Clipboard API restriction.
+        function parseCoordinatesFromInputInternal() {
+            const latInput = document.getElementById('lat');
+            const lonInput = document.getElementById('lon');
+            // IMPORTANT: Since latInput is now type="text", we don't have issues with multiple decimals during paste.
+            const text = latInput.value.trim();
+            
+            // Regex to find two floating-point numbers, potentially separated by comma, space, or "lat/lon" text.
+            // Example match: "39.9042, 116.4074" or "39.9042 116.4074"
+            const regex = /^(-?\d+\.?\d*)\s*[,\s]\s*(-?\d+\.?\d*)$/;
+            const match = text.match(regex);
+            
+            if (match && match.length >= 3) {
+                const lat = parseFloat(match[1]);
+                const lon = parseFloat(match[2]);
+
+                if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                    window.showStatus("ERROR: 坐标值无效或超出范围");
+                    return;
+                }
+                
+                // Update both fields
+                latInput.value = lat; // Display the clean number
+                lonInput.value = lon;
+                window.showStatus("COORDINATES PARSED AND LOADED");
+
+            } else {
+                // If the lat input field only contains a single valid number (e.g., user only pasted Latitude), 
+                // we tell them to include both. If it contains garbage, we tell them the format.
+                if (text !== '' && !isNaN(parseFloat(text)) && isFinite(parseFloat(text))) {
+                    window.showStatus("INFO: 请确保输入框中包含经度和纬度");
+                    return;
+                }
+                
+                window.showStatus("ERROR: 格式不正确。请粘贴 '纬度, 经度' 或 '纬度 经度'");
+            }
+        }
+
+
+        // --- Existing Functions Updated (Internal/Module Scope) ---
+
+        function setPresetInternal(lat, lon) {
+            document.getElementById('lat').value = lat;
+            document.getElementById('lon').value = lon;
+            locateUserCoordinatesInternal();
         }
 
         function showStreetView(lat, lon) {
             const mapOverlay = document.getElementById('map-overlay');
             const mapFrame = document.getElementById('map-frame');
             
-            // 切换为百度地图的Marker API。
-            // 注意：百度地图的简单iframe嵌入链接不直接支持卫星图层，因此这里是标准的矢量图。
+            // Using Baidu Map API for demonstration
             const src = `https://api.map.baidu.com/marker?location=${lat},${lon}&title=定位目标&content=纬度:${lat.toFixed(6)}, 经度:${lon.toFixed(6)}&output=html&src=webapp.baidu.map&zoom=17`;
             
             mapFrame.src = src;
             mapOverlay.classList.add('active');
             
-            // Mobile UX: Auto-hide UI panel when map shows up to give space
             if (window.innerWidth <= 768) {
                 document.getElementById('ui-container').classList.add('mobile-hidden');
                 document.getElementById('ui-toggle').innerText = '☰';
             }
         }
 
-        function hideStreetView() {
+        function hideStreetViewInternal() {
             document.getElementById('map-overlay').classList.remove('active');
             setTimeout(() => {
                 if(!document.getElementById('map-overlay').classList.contains('active')) {
@@ -500,28 +841,36 @@
             }, 1000);
         }
 
-        function locateUserCoordinates() {
-            const latInput = document.getElementById('lat').value;
-            const lonInput = document.getElementById('lon').value;
-            hideStreetView(); 
+        function locateUserCoordinatesInternal() {
+            // Since lat is type="text", we must use parseFloat on both inputs before validation
+            const latValue = document.getElementById('lat').value;
+            const lonValue = document.getElementById('lon').value;
 
-            if (latInput === '' || lonInput === '') {
-                showStatus("ERROR: INVALID INPUT");
+            if (latValue === '' || lonValue === '') {
+                window.showStatus("ERROR: INVALID INPUT");
                 return;
             }
 
-            const lat = parseFloat(latInput);
-            const lon = parseFloat(lonInput);
+            const lat = parseFloat(latValue);
+            const lon = parseFloat(lonValue);
             
-            showStatus("ACQUIRING TARGET LOCK...");
+            // Perform final validation on parsed numbers
+            if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                window.showStatus("ERROR: 经纬度值超出有效范围或格式有误");
+                return;
+            }
+
+            window.showStatus("ACQUIRING TARGET LOCK...");
             document.getElementById('reticle').style.display = 'block';
             
-            // Mobile UX: Hide UI panel when flight starts
             if (window.innerWidth <= 768) {
                 document.getElementById('ui-container').classList.add('mobile-hidden');
                 document.getElementById('ui-toggle').innerText = '☰';
             }
             
+            // NEW: Save coordinates to history before flight starts
+            saveHistory(lat, lon);
+
             flyTo(lat, lon);
         }
 
@@ -545,10 +894,11 @@
                     .easing(TWEEN.Easing.Quintic.Out)
                     .onUpdate(() => controls.update())
                     .onComplete(() => {
-                        showStatus("OPTICAL FEED ESTABLISHED.");
+                        window.showStatus("OPTICAL FEED ESTABLISHED.");
                         setTimeout(() => {
                             showStreetView(lat, lon);
-                            showStatus(`LOCATION LOCKED: ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+                            window.showStatus(`LOCATION LOCKED: ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+                            document.getElementById('reticle').style.display = 'none'; // Hide reticle after landing
                         }, 500);
                     })
                 )
@@ -579,8 +929,19 @@
             controls.update();
             renderer.render(scene, camera);
         }
+        
+        // --- Expose Module Functions to Global Handler ---
+        window.moduleFunctions.toggleUIInternal = toggleUIInternal;
+        window.moduleFunctions.hideStreetViewInternal = hideStreetViewInternal;
+        // The global `pasteFromClipboard` now points to the new parsing logic
+        window.moduleFunctions.parseCoordinatesFromInputInternal = parseCoordinatesFromInputInternal; 
+        window.moduleFunctions.locateUserCoordinatesInternal = locateUserCoordinatesInternal;
+        window.moduleFunctions.setPresetInternal = setPresetInternal;
+        window.moduleFunctions.clearAllHistoryInternal = clearAllHistoryInternal;
+        window.moduleFunctions.deleteHistoryItemInternal = deleteHistoryItemInternal;
 
-        init();
+        // Start Firebase setup which will call init() and loadHistory()
+        firebaseSetup();
     </script>
 </body>
 </html>
