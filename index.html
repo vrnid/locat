@@ -245,6 +245,27 @@
             background: rgba(0,0,0,0.2);
             border-radius: 4px;
         }
+        
+        /* New styling for the Map Source Selector */
+        #map-source-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .map-source-btn {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid #334;
+            color: #aaa;
+            padding: 10px;
+            font-size: 0.8rem;
+        }
+        .map-source-btn.active-source {
+            background: rgba(0, 240, 255, 0.25);
+            border-color: #00f0ff;
+            color: #00f0ff;
+        }
+
 
         /* Target Reticle in Center */
         #reticle {
@@ -292,14 +313,13 @@
                 display: flex;
             }
 
-            /* 1. UI Container Alignment and Scroll/Height Fix */
+            /* UI Container Alignment and Scroll/Height Fix */
             #ui-container {
                 left: 20px;
-                /* --- FIX: Adjusted width to make the menu narrower and move it further left --- */
-                /* Current width: 100% - 20px (left margin) - 40px (buffer) = 100% - 60px */
+                /* Adjusted width to make the menu narrower and move it further left */
                 width: calc(100% - 60px); 
-                top: 15px; /* Aligned with toggle button top */
-                bottom: 15px; /* Consistent bottom constraint for reliable scrolling */
+                top: 15px; 
+                bottom: 15px; 
                 height: auto; 
                 max-height: none; 
                 overflow-y: auto; 
@@ -322,7 +342,7 @@
             }
 
 
-            /* 2. Map Overlay Fullscreen/Interaction Fix */
+            /* Map Overlay Fullscreen/Interaction Fix */
             #map-overlay {
                 width: 100%;
                 height: 100%;
@@ -367,14 +387,21 @@
     <!-- Map Overlay -->
     <div id="map-overlay">
         <div class="map-header">
-            <span>BAIDU MAP FEED // 百度地图</span>
+            <span id="map-header-text">BAIDU MAP FEED // 百度地图</span>
             <span class="close-map" onclick="hideStreetView()">关闭 [X]</span>
         </div>
         <iframe id="map-frame" src=""></iframe>
     </div>
 
     <div id="ui-container">
-        <h1>全球定位系统 <span style="font-size:0.6em; opacity:0.7">Mobile</span></h1>
+        <h1>全球定位 <span style="font-size:0.6em; opacity:0.7">Mobile</span></h1>
+        
+        <!-- NEW: Map Source Selector -->
+        <label>MAP SOURCE / 地图源选择</label>
+        <div id="map-source-selector">
+            <button class="map-source-btn active-source" id="baidu-source" onclick="setMapSource('baidu')">百度 (纯净版)</button>
+            <button class="map-source-btn" id="google-source" onclick="setMapSource('google')">谷歌 (备用)</button>
+        </div>
         
         <!-- NEW: Place Name Search Input -->
         <div class="input-group">
@@ -457,6 +484,11 @@
         function clearAllHistory() {
             window.moduleFunctions.clearAllHistoryInternal();
         }
+        
+        function setMapSource(source) {
+            window.moduleFunctions.setMapSourceInternal(source);
+        }
+
 
         window.showStatus = function(text) {
             const el = document.getElementById('status-msg');
@@ -494,7 +526,8 @@
         const apiKey = ""; 
 
         const LOCAL_STORAGE_KEY = 'earth_locator_history'; // Key for local storage
-
+        let currentMapSource = localStorage.getItem('currentMapSource') || 'baidu'; // Default map source
+        
         // --- Core Functions (Internal/Module Scope) ---
         
         /**
@@ -523,6 +556,10 @@
                     ui.classList.add('mobile-hidden');
                     btn.innerText = '☰'; // Initial icon for hidden state
                 }
+                
+                // Initialize map source buttons
+                updateMapSourceButtons(currentMapSource);
+
 
                 // Load history 
                 loadHistoryLocal(); 
@@ -804,6 +841,36 @@
                 listEl.appendChild(li);
             });
         }
+        
+        // --- NEW: Map Source Control ---
+        
+        function setMapSourceInternal(source) {
+            if (source !== 'baidu' && source !== 'google') {
+                window.showStatus("ERROR: 无效的地图源");
+                return;
+            }
+            currentMapSource = source;
+            localStorage.setItem('currentMapSource', source);
+            updateMapSourceButtons(source);
+            window.showStatus(`MAP SOURCE SET TO: ${source.toUpperCase()}`);
+        }
+        
+        function updateMapSourceButtons(source) {
+            const baiduBtn = document.getElementById('baidu-source');
+            const googleBtn = document.getElementById('google-source');
+            const headerText = document.getElementById('map-header-text');
+            
+            baiduBtn.classList.remove('active-source');
+            googleBtn.classList.remove('active-source');
+            
+            if (source === 'baidu') {
+                baiduBtn.classList.add('active-source');
+                headerText.textContent = 'BAIDU MAP FEED // 百度地图 (纯净)';
+            } else {
+                googleBtn.classList.add('active-source');
+                headerText.textContent = 'GOOGLE MAPS FEED // 谷歌地图 (备用)';
+            }
+        }
 
         // --- NEW: Place Search Functionality (Internal/Module Scope) ---
 
@@ -940,8 +1007,16 @@
             const mapOverlay = document.getElementById('map-overlay');
             const mapFrame = document.getElementById('map-frame');
             
-            // Using Baidu Map API for demonstration
-            const src = `https://api.map.baidu.com/marker?location=${lat},${lon}&title=定位目标&content=纬度:${lat.toFixed(6)}, 经度:${lon.toFixed(6)}&output=html&src=webapp.baidu.map&zoom=17`;
+            let src;
+            
+            if (currentMapSource === 'baidu') {
+                // *** 纯净的百度地图源 (Simplified Baidu Marker API) ***
+                // 移除了 title, content, src 参数，只保留定位的核心功能
+                src = `https://api.map.baidu.com/marker?location=${lat},${lon}&output=html&zoom=17`;
+            } else if (currentMapSource === 'google') {
+                // *** 谷歌地图替代方案 (Simple Google Maps Embed) ***
+                src = `https://maps.google.com/maps?q=${lat},${lon}&hl=zh-CN&z=17&output=embed`;
+            }
             
             mapFrame.src = src;
             mapOverlay.classList.add('active');
@@ -1057,6 +1132,7 @@
         window.moduleFunctions.searchAndLocateInternal = searchAndLocateInternal; 
         window.moduleFunctions.locateUserCoordinatesInternal = locateUserCoordinatesInternal;
         window.moduleFunctions.setPresetInternal = setPresetInternal;
+        window.moduleFunctions.setMapSourceInternal = setMapSourceInternal; // New Exposure
         
         // Expose local storage functions
         window.moduleFunctions.clearAllHistoryInternal = clearAllHistoryLocal;
