@@ -295,30 +295,30 @@
             /* 1. UI Container Alignment and Scroll/Height Fix */
             #ui-container {
                 left: 20px;
-                /* Alignment Fix: 100% - 20px (left margin) - 15px (right margin to align with button) */
-                width: calc(100% - 35px); 
+                /* --- FIX: Adjusted width to make the menu narrower and move it further left --- */
+                /* Current width: 100% - 20px (left margin) - 40px (buffer) = 100% - 60px */
+                width: calc(100% - 60px); 
                 top: 15px; /* Aligned with toggle button top */
                 bottom: 15px; /* Consistent bottom constraint for reliable scrolling */
                 height: auto; 
                 max-height: none; 
                 overflow-y: auto; 
                 padding-bottom: 40px; 
-                /* Change transition to translateY for hiding */
                 transform: translateY(0); 
-                border-left: 2px solid #00f0ff; /* Subtle border change */
+                border-left: 2px solid #00f0ff; 
             }
             
             #ui-toggle {
                 top: 15px;
-                right: 15px;
+                right: 15px; /* Keeps the toggle button fixed on the right */
             }
 
             /* Class to hide UI on mobile */
             #ui-container.mobile-hidden {
                 opacity: 0;
                 pointer-events: none;
-                /* Use 100vh translation for reliable off-screen positioning */
-                transform: translateX(-100%); /* Changed to X translation for sliding off screen */
+                /* Use X translation for sliding off screen to the left */
+                transform: translateX(-100%); 
             }
 
 
