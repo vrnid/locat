@@ -257,7 +257,8 @@
     <!-- Map Overlay -->
     <div id="map-overlay">
         <div class="map-header">
-            <span>SATELLITE FEED</span>
+            <!-- Updated Header for Baidu Map -->
+            <span>BAIDU MAP FEED // 百度地图</span>
             <span class="close-map" onclick="hideStreetView()">关闭 [X]</span>
         </div>
         <iframe id="map-frame" src=""></iframe>
@@ -475,7 +476,10 @@
         function showStreetView(lat, lon) {
             const mapOverlay = document.getElementById('map-overlay');
             const mapFrame = document.getElementById('map-frame');
-            const src = `https://maps.google.com/maps?q=${lat},${lon}&t=h&z=17&ie=UTF8&iwloc=&output=embed`;
+            
+            // 切换为百度地图的Marker API。
+            // 注意：百度地图的简单iframe嵌入链接不直接支持卫星图层，因此这里是标准的矢量图。
+            const src = `https://api.map.baidu.com/marker?location=${lat},${lon}&title=定位目标&content=纬度:${lat.toFixed(6)}, 经度:${lon.toFixed(6)}&output=html&src=webapp.baidu.map&zoom=17`;
             
             mapFrame.src = src;
             mapOverlay.classList.add('active');
