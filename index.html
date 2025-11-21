@@ -293,12 +293,13 @@
                 display: flex;
             }
 
-            /* 1. UI Container Scroll/Height Fix */
+            /* 1. UI Container Scroll/Height Fix: Use top/bottom constraints for reliable scrolling */
             #ui-container {
                 width: calc(100% - 40px); /* Full width minus margins */
                 left: 20px;
-                top: 64px; /* Give a bit more space from the top */
-                height: calc(100vh - 84px); /* Fixed height for reliable scrolling: 100vh - (top margin + bottom padding/margin) */
+                top: 20px; /* Consistent top margin */
+                bottom: 20px; /* IMPORTANT: Set bottom constraint to define height */
+                height: auto; /* Let top/bottom define height */
                 max-height: none; /* Override desktop max-height */
                 overflow-y: auto; 
                 padding-bottom: 40px; /* Ensure history section bottom is visible */
@@ -310,8 +311,8 @@
             #ui-container.mobile-hidden {
                 opacity: 0;
                 pointer-events: none;
-                /* Use translateY to hide upwards instead of opacity+translate */
-                transform: translateY(-100%); 
+                /* Use 100vh translation for reliable off-screen positioning */
+                transform: translateY(-100vh); 
             }
             
             #ui-toggle {
