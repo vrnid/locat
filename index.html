@@ -12,8 +12,8 @@
         #ui-toggle {
             display: none; /* Hidden on desktop */
             position: absolute;
-            top: 20px;
-            right: 20px;
+            top: 15px; /* Aligned with UI container top margin */
+            right: 15px; /* Target alignment position */
             width: 44px;
             height: 44px;
             background: rgba(16, 20, 30, 0.9);
@@ -138,7 +138,6 @@
             border-radius: 4px;
             padding: 5px 0;
         }
-        /* ... History item styles omitted for brevity ... */
         .history-item {
             display: flex;
             justify-content: space-between;
@@ -293,18 +292,25 @@
                 display: flex;
             }
 
-            /* 1. UI Container Scroll/Height Fix: Use top/bottom constraints for reliable scrolling */
+            /* 1. UI Container Alignment and Scroll/Height Fix */
             #ui-container {
-                width: calc(100% - 40px); /* Full width minus margins */
                 left: 20px;
-                top: 20px; /* Consistent top margin */
-                bottom: 20px; /* IMPORTANT: Set bottom constraint to define height */
-                height: auto; /* Let top/bottom define height */
-                max-height: none; /* Override desktop max-height */
+                /* Alignment Fix: 100% - 20px (left margin) - 15px (right margin to align with button) */
+                width: calc(100% - 35px); 
+                top: 15px; /* Aligned with toggle button top */
+                bottom: 15px; /* Consistent bottom constraint for reliable scrolling */
+                height: auto; 
+                max-height: none; 
                 overflow-y: auto; 
-                padding-bottom: 40px; /* Ensure history section bottom is visible */
+                padding-bottom: 40px; 
                 /* Change transition to translateY for hiding */
                 transform: translateY(0); 
+                border-left: 2px solid #00f0ff; /* Subtle border change */
+            }
+            
+            #ui-toggle {
+                top: 15px;
+                right: 15px;
             }
 
             /* Class to hide UI on mobile */
@@ -312,13 +318,7 @@
                 opacity: 0;
                 pointer-events: none;
                 /* Use 100vh translation for reliable off-screen positioning */
-                transform: translateY(-100vh); 
-            }
-            
-            #ui-toggle {
-                 /* Adjust toggle button position slightly */
-                 top: 15px;
-                 right: 15px;
+                transform: translateX(-100%); /* Changed to X translation for sliding off screen */
             }
 
 
@@ -331,13 +331,12 @@
                 right: 0;
                 bottom: 0;
                 border-radius: 0;
-                z-index: 102; /* Higher z-index than UI toggle (101) to ensure it's on top and handles touch */
+                z-index: 102; 
                 box-shadow: none;
             }
             
             .map-header {
-                /* Ensure close button is still easily clickable */
-                position: fixed; /* Fixed position over the iframe */
+                position: fixed; 
             }
 
             h1 { font-size: 1rem; }
@@ -362,7 +361,7 @@
 
     <div id="reticle"></div>
 
-    <!-- Mobile Toggle Button -->
+    <!-- Mobile Toggle Button - Initial content is 'X' but JS will change to '☰' on mobile load -->
     <div id="ui-toggle" onclick="toggleUI()">✕</div>
 
     <!-- Map Overlay -->
@@ -423,8 +422,7 @@
     </div>
     
     <script>
-        // These functions are defined globally so they can be called directly by HTML onclick attributes.
-        // The actual logic will be routed to the module-level functions where Three.js objects reside.
+        // --- Global Helper Functions (Routing HTML onclicks to module scope) ---
         
         window.moduleFunctions = {};
 
@@ -506,6 +504,7 @@
             const ui = document.getElementById('ui-container');
             const btn = document.getElementById('ui-toggle');
             ui.classList.toggle('mobile-hidden');
+            // If it is hidden, show '☰' to open it. If visible, show '✕' to close it.
             btn.innerText = ui.classList.contains('mobile-hidden') ? '☰' : '✕';
         }
 
@@ -514,9 +513,19 @@
          */
         function appSetup() {
             try {
-                // Initialize Three.js and load history
+                // Initialize Three.js
                 init();
-                loadHistoryLocal(); // Use local storage version
+                
+                // Initialize mobile UI state to hidden if on mobile screen
+                if (window.innerWidth <= 768) {
+                    const ui = document.getElementById('ui-container');
+                    const btn = document.getElementById('ui-toggle');
+                    ui.classList.add('mobile-hidden');
+                    btn.innerText = '☰'; // Initial icon for hidden state
+                }
+
+                // Load history 
+                loadHistoryLocal(); 
 
             } catch (error) {
                 console.error("Application setup failed:", error);
