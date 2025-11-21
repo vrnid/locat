@@ -401,7 +401,7 @@
     <!-- Script block for functions that need to be globally accessible by onclick handlers -->
     <script>
         // These functions are defined globally so they can be called directly by HTML onclick attributes.
-        // The actual logic will be routed to the module-level functions where Firebase/Three.js objects reside.
+        // The actual logic will be routed to the module-level functions where Three.js objects reside.
         
         // Global references to module functions (will be set in the module script below)
         window.moduleFunctions = {};
@@ -434,10 +434,12 @@
         }
 
         function deleteHistory(docId) {
+             // Routes to the local storage delete function
              window.moduleFunctions.deleteHistoryItemInternal(docId);
         }
 
         function clearAllHistory() {
+            // Routes to the local storage clear function
             window.moduleFunctions.clearAllHistoryInternal();
         }
 
@@ -472,22 +474,14 @@
     </script>
 
     <script type="module">
-        // --- Firebase Imports ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, doc, deleteDoc, onSnapshot, query, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // --- Global Variables (Three.js and Firebase) ---
+        // --- Global Variables (Three.js and Local Storage) ---
         let scene, camera, renderer, controls;
         let earthMesh, cloudsMesh, targetMarker, atmosphereMesh;
         const EARTH_RADIUS = 100; 
         const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=";
         const apiKey = ""; // Canvas will provide this if empty
 
-        let db, auth, userId;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const LOCAL_STORAGE_KEY = 'earth_locator_history'; // Key for local storage
 
         // --- Core Functions (Internal/Module Scope) ---
         
@@ -499,32 +493,21 @@
             btn.innerText = ui.classList.contains('mobile-hidden') ? '☰' : '✕';
         }
 
-        async function firebaseSetup() {
+        /**
+         * Initializes the application: Three.js setup and local history loading.
+         */
+        function appSetup() {
             try {
-                // setLogLevel('Debug'); // Enable Firestore logging for debugging
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                // Authenticate user
-                if (typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
-                userId = auth.currentUser?.uid || crypto.randomUUID();
-                
-                // Initialize Three.js and load history only after authentication is complete
+                // Initialize Three.js and load history
                 init();
-                loadHistory();
+                loadHistoryLocal(); // Use local storage version
 
             } catch (error) {
-                console.error("Firebase setup failed:", error);
-                window.showStatus("ERROR: DATA SYSTEM FAILED");
-                document.getElementById('history-list').innerHTML = '<li style="color:#f00; text-align:center;">无法连接到数据库</li>';
+                console.error("Application setup failed:", error);
+                window.showStatus("ERROR: APPLICATION FAILED TO START");
+                document.getElementById('history-list').innerHTML = '<li style="color:#f00; text-align:center;">应用初始化失败</li>';
             } finally {
-                // 修复卡在加载界面的问题：无论初始化成功与否，都确保移除加载动画
+                // Remove loading animation
                 setTimeout(() => {
                     const loader = document.getElementById('loader');
                     if (loader) {
@@ -575,8 +558,6 @@
             createMarker();
 
             window.addEventListener('resize', onWindowResize, false);
-            
-            // 移除原本在此处的加载动画移除逻辑，已移至 firebaseSetup() 的 finally 块中确保执行。
             
             animate();
         }
@@ -673,60 +654,76 @@
             return new THREE.Vector3(x, y, z);
         }
 
-        // --- History Management (Firestore) ---
+        // --- History Management (Local Storage) ---
 
-        function getHistoryCollectionRef() {
-            if (!db || !userId) return null;
-            // Private Collection Path: /artifacts/{appId}/users/{userId}/location_history
-            return collection(db, `artifacts/${appId}/users/${userId}/location_history`);
-        }
-        
-        function loadHistory() {
-            const colRef = getHistoryCollectionRef();
-            if (!colRef) return;
-
-            // Cannot use orderBy('timestamp', 'desc') without an index. We will sort data client-side.
-            const q = query(colRef);
-            
-            onSnapshot(q, (snapshot) => {
-                const history = [];
-                snapshot.forEach(doc => {
-                    history.push({ id: doc.id, ...doc.data() });
-                });
+        /**
+         * Loads history from localStorage and renders it.
+         * Replaces Firebase's onSnapshot.
+         */
+        function loadHistoryLocal() {
+            try {
+                const historyJson = localStorage.getItem(LOCAL_STORAGE_KEY);
+                let history = historyJson ? JSON.parse(historyJson) : [];
                 
-                // Sort client-side by timestamp (newest first)
+                // Ensure data structure integrity: sort by timestamp (newest first)
                 history.sort((a, b) => b.timestamp - a.timestamp);
                 
                 renderHistory(history);
-            }, (error) => {
-                console.error("Error listening to history:", error);
-                document.getElementById('history-list').innerHTML = '<li style="color:#f00; text-align:center;">无法连接到数据库</li>';
-            });
+                window.showStatus("LOCAL HISTORY LOADED");
+            } catch (error) {
+                console.error("Error loading local history:", error);
+                window.showStatus("ERROR: LOCAL HISTORY LOAD FAILED");
+            }
         }
 
-        async function saveHistory(lat, lon, placeName = null) {
-            const colRef = getHistoryCollectionRef();
-            if (!colRef) return;
-            
+        /**
+         * Saves a new record to localStorage and reloads the display.
+         * Replaces Firebase's addDoc.
+         */
+        function saveHistoryLocal(lat, lon, placeName = null) {
             try {
-                await addDoc(colRef, {
+                const historyJson = localStorage.getItem(LOCAL_STORAGE_KEY);
+                let history = historyJson ? JSON.parse(historyJson) : [];
+                
+                const newRecord = {
+                    // Use a simple ID based on timestamp + random for uniqueness
+                    id: Date.now().toString() + Math.random().toString(36).substring(2, 9), 
                     lat: lat,
                     lon: lon,
                     timestamp: Date.now(),
-                    place: placeName // Save place name if available
-                });
+                    place: placeName 
+                };
+                
+                history.push(newRecord);
+                
+                // Re-save the updated array
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(history));
+                
+                // Re-render the list immediately
+                loadHistoryLocal(); 
+
             } catch (error) {
-                console.error("Error saving history:", error);
+                console.error("Error saving local history:", error);
                 window.showStatus("ERROR: SAVE HISTORY FAILED");
             }
         }
         
-        async function deleteHistoryItemInternal(docId) {
-            const colRef = getHistoryCollectionRef();
-            if (!colRef) return;
-            
+        /**
+         * Deletes a record from localStorage by ID and reloads the display.
+         * Replaces Firebase's deleteDoc.
+         */
+        function deleteHistoryItemLocal(docId) {
             try {
-                await deleteDoc(doc(colRef, docId));
+                const historyJson = localStorage.getItem(LOCAL_STORAGE_KEY);
+                let history = historyJson ? JSON.parse(historyJson) : [];
+
+                const filteredHistory = history.filter(item => item.id !== docId);
+                
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filteredHistory));
+                
+                // Re-render the list immediately
+                loadHistoryLocal();
+
                 window.showStatus("HISTORY ITEM DELETED");
             } catch (error) {
                 console.error("Error deleting item:", error);
@@ -734,25 +731,20 @@
             }
         }
 
-        async function clearAllHistoryInternal() {
-            // Since native confirm is not used, we assume the user intends to clear if this is called.
-            const colRef = getHistoryCollectionRef();
-            if (!colRef) return;
-            
+        /**
+         * Clears all history from localStorage.
+         * Replaces Firebase's getDocs and batch delete.
+         */
+        function clearAllHistoryLocal() {
             // NOTE: Using a custom modal is highly recommended instead of native confirm/alert.
             const isConfirmed = window.confirm('确定要清空全部定位历史记录吗？'); 
             if (!isConfirmed) return;
 
             try {
-                // Fetch all documents
-                const snapshot = await getDocs(colRef);
-                const deletePromises = [];
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
                 
-                // Delete them in parallel
-                snapshot.forEach(doc => {
-                    deletePromises.push(deleteDoc(doc.ref));
-                });
-                await Promise.all(deletePromises);
+                // Re-render the list immediately (will show '暂无历史记录')
+                loadHistoryLocal(); 
                 
                 window.showStatus("ALL HISTORY CLEARED");
             } catch (error) {
@@ -797,7 +789,7 @@
                 li.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation(); // Prevent loading coords when deleting
                     const docId = e.currentTarget.getAttribute('data-id');
-                    deleteHistoryItemInternal(docId);
+                    deleteHistoryItemLocal(docId); // Call local storage delete
                 });
 
                 listEl.appendChild(li);
@@ -887,6 +879,10 @@
                 
                 // Fly to the location and save history with the place name
                 window.showStatus(`COORDINATES FOUND. LOCATING ${placeName}...`);
+                
+                // Save to local storage
+                saveHistoryLocal(lat, lon, placeName);
+                
                 flyTo(lat, lon, placeName);
                 
             } catch (error) {
@@ -898,7 +894,6 @@
 
         // --- Input Parsing Functionality (Internal/Module Scope) ---
 
-        // Renamed and changed logic to bypass Clipboard API restriction.
         function parseCoordinatesFromInputInternal() {
             const latInput = document.getElementById('lat');
             const lonInput = document.getElementById('lon');
@@ -999,10 +994,9 @@
                 document.getElementById('ui-toggle').innerText = '☰';
             }
             
-            // NEW: Save coordinates to history before flight starts
-            // Clear place name input when using manual coordinates
+            // Save to local storage
             const placeName = document.getElementById('place-name').value.trim() || null;
-            saveHistory(lat, lon, placeName);
+            saveHistoryLocal(lat, lon, placeName);
 
             flyTo(lat, lon, placeName);
         }
@@ -1068,14 +1062,16 @@
         window.moduleFunctions.toggleUIInternal = toggleUIInternal;
         window.moduleFunctions.hideStreetViewInternal = hideStreetViewInternal;
         window.moduleFunctions.parseCoordinatesFromInputInternal = parseCoordinatesFromInputInternal; 
-        window.moduleFunctions.searchAndLocateInternal = searchAndLocateInternal; // Expose new search function
+        window.moduleFunctions.searchAndLocateInternal = searchAndLocateInternal; 
         window.moduleFunctions.locateUserCoordinatesInternal = locateUserCoordinatesInternal;
         window.moduleFunctions.setPresetInternal = setPresetInternal;
-        window.moduleFunctions.clearAllHistoryInternal = clearAllHistoryInternal;
-        window.moduleFunctions.deleteHistoryItemInternal = deleteHistoryItemInternal;
+        
+        // Expose local storage functions
+        window.moduleFunctions.clearAllHistoryInternal = clearAllHistoryLocal;
+        window.moduleFunctions.deleteHistoryItemInternal = deleteHistoryItemLocal;
 
-        // Start Firebase setup which will call init() and loadHistory()
-        firebaseSetup();
+        // Start app setup (no Firebase involved)
+        appSetup();
     </script>
 </body>
 </html>
